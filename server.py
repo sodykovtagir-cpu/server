@@ -4,12 +4,20 @@ from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
+# Твой секретный ключ (можешь изменить эти буквы на любые свои)
+SECRET_TOKEN = "BroTagirToken2026_XYZ"
+
 @app.route('/')
 def home():
-    return "WAP-сервер на порту 8080 запущен!", 200
+    return "WAP-сервер активен!", 200
 
 @app.route('/browse')
 def browse():
+    # Проверяем, прислала ли игра секретный пароль
+    user_token = request.headers.get('X-Auth-Token')
+    if user_token != SECRET_TOKEN:
+        return "Ошибка: Доступ запрещён. Неверный токен!", 403
+
     target_url = request.args.get('url')
     if not target_url:
         return "Укажи URL через ?url=...", 200
@@ -19,8 +27,6 @@ def browse():
         response = requests.get(target_url, headers=headers, timeout=10)
         
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Вырезаем мусор
         for tag in soup(["script", "style", "header", "footer", "nav", "aside"]):
             tag.extract()
             
@@ -31,5 +37,4 @@ def browse():
         return f"Ошибка шлюза: {str(e)}", 200
 
 if __name__ == '__main__':
-    # Запускаем на порту 8080
     app.run(host='0.0.0.0', port=8080)
