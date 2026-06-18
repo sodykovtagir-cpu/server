@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 app = Flask(__name__)
 
 # Твой секретный ключ (можешь изменить эти буквы на любые свои)
-SECRET_TOKEN = "BroTagirToken2026_XYZ"
+SECRET_TOKEN = "HAsdkrlaaaiwejkdh12AUs"
 
 @app.route('/')
 def home():
