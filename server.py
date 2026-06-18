@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
-SECRET_TOKEN = "HAsdkrlaaaiwejkdh12AUs "
+SECRET_TOKEN = "HAsdkrlaaaiwejkdh12AUs"
 
 @app.route('/')
 def home():
