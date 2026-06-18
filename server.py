@@ -4,7 +4,6 @@ from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
-# Твой секретный ключ (можешь изменить эти буквы на любые свои)
 SECRET_TOKEN = "HAsdkrlaaaiwejkdh12AUs "
 
 @app.route('/')
@@ -13,7 +12,6 @@ def home():
 
 @app.route('/browse')
 def browse():
-    # Проверяем, прислала ли игра секретный пароль
     user_token = request.headers.get('X-Auth-Token')
     if user_token != SECRET_TOKEN:
         return "Ошибка: Доступ запрещён. Неверный токен!", 403
