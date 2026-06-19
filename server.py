@@ -2,6 +2,7 @@ from flask import Flask, request, send_file
 import requests
 from bs4 import BeautifulSoup
 import io
+import os
 
 app = Flask(__name__)
 
@@ -43,7 +44,8 @@ def get_image():
 
 @app.route('/browse')
 def browse():
-    user_token = request.headers.get('X-Auth-Token')
+    # Теперь проверяем токен из параметров URL ссылки
+    user_token = request.args.get('token') or request.headers.get('X-Auth-Token')
     if user_token != SECRET_TOKEN:
         return "Ошибка: Доступ запрещён. Неверный токен!", 403
 
@@ -51,10 +53,9 @@ def browse():
     if not query_input:
         return "Введите поисковый запрос или URL...", 200
     
-    # ЕСЛИ ПОИСК (нет точки) — используем текстовый шлюз Lite Поиска (не банит Рендер)
+    # ЕСЛИ ПОИСК (нет точки) — Можеек, который не банит
     if '.' not in query_input:
         try:
-            # Используем поисковый прокси Mojeek, он вообще не блокирует хостинги
             search_url = f"https://www.mojeek.com/search?q={query_input}"
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             
@@ -66,12 +67,10 @@ def browse():
             results.append("=" * 40)
             results.append("")
             
-            # Находим все ссылки на результаты
             for link_tag in soup.find_all('a', class_='ob'):
                 title = link_tag.get_text(strip=True)
                 link = link_tag.get('href', '')
                 
-                # Находим описание под ссылкой
                 snippet_tag = link_tag.find_next('p', class_='s')
                 snippet = snippet_tag.get_text(strip=True) if snippet_tag else "Нет описания."
                 
@@ -92,7 +91,7 @@ def browse():
         except Exception as e:
             return f"Ошибка поискового узла: {str(e)}", 200
             
-    # ЕСЛИ ССЫЛКА (есть точка) — открываем сайт напрямую
+    # ЕСЛИ ССЫЛКА (есть точка) — открываем напрямую
     else:
         clean_url = query_input.replace("https://", "").replace("http://", "")
         target_url = f"https://{clean_url}"
@@ -112,6 +111,6 @@ def browse():
             return f"Ошибка шлюза: {str(e)}", 200
 
 if __name__ == '__main__':
-    import os
+    # Авто-подбор порта под требования Render
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
