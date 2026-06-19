@@ -56,7 +56,7 @@ def wrap_text(text, max_chars):
 
 def fetch_html(url):
     headers = {"User-Agent": "Mozilla/5.0 (compatible; MiniBrowser/1.0)"}
-    resp = requests.get(url, headers=headers, timeout=10)
+    resp = requests.get(url, headers=headers, timeout=15)
     resp.raise_for_status()
     return resp.text
 
