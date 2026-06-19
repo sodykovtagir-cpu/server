@@ -5,6 +5,8 @@ import io
 import os
 
 app = Flask(__name__)
+# КРИТИЧЕСКИ ВАЖНО: заставляем Flask возвращать нормальный текст, а не \uXXXX
+app.json.ensure_ascii = False 
 
 SECRET_TOKEN = "HAsdkrlaaaiwejkdh12AUs"
 
