@@ -6,24 +6,6 @@ app = Flask(__name__)
 
 SECRET_TOKEN = "HAsdkrlaaaiwejkdh12AUs"
 
-# Функция, которая выбирает иконку в зависимости от адреса сайта
-def get_site_icon(url):
-    url = url.lower()
-    if "youtube.com" in url or "youtu.be" in url:
-        return "🎬 [YouTube]"
-    elif "vk.com" in url:
-        return "💬 [ВКонтакте]"
-    elif "wikipedia.org" in url:
-        return "📚 [Википедия]"
-    elif "github.com" in url:
-        return "💻 [GitHub]"
-    elif "steam" in url or "play" in url or "game" in url:
-        return "🎮 [Игры]"
-    elif "mail" in url or "yandex" in url:
-        return "📧 [Почта/Инфо]"
-    else:
-        return "🌐 [Сайт]"
-
 @app.route('/')
 def home():
     return "WAP-сервер активен!", 200
@@ -38,61 +20,39 @@ def browse():
     if not query_input:
         return "Введите поисковый запрос или URL...", 200
     
-    # Поиск через Startpage
+    # Если в запросе нет точки — ищем по базе знаний Википедии (без капч!)
     if '.' not in query_input:
         try:
-            search_url = "https://www.startpage.com/sp/search"
-            data = {
-                "query": query_input,
-                "cat": "web",
-                "cmd": "process_search",
-                "language": "nederlands",
-                "engine0": "v1u0sh"
-            }
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1',
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
+            wiki_api = f"https://ru.wikipedia.org/w/api.php?action=query&list=search&srsearch={query_input}&format=json"
+            headers = {'User-Agent': 'NavalBrowser/1.0'}
+            req = requests.get(wiki_api, headers=headers, timeout=10).json()
             
-            response = requests.post(search_url, data=data, headers=headers, timeout=10)
-            soup = BeautifulSoup(response.text, 'html.parser')
+            search_results = req.get('query', {}).get('search', [])
             
+            if not search_results:
+                return f"По запросу '{query_input}' ничего не найдено.", 200
+                
             results = []
-            results.append(f" ۩  РЕЗУЛЬТАТЫ ПОИСКА: {query_input.upper()}  ۩ ")
-            results.append("=" * 40)
+            results.append(f"=== Результаты поиска для: {query_input} ===")
             results.append("")
             
-            for result in soup.find_all('li', class_='w-gl__result'):
-                title_tag = result.find('a', class_='w-gl__result-title')
-                snippet_tag = result.find('p', class_='w-gl__description')
+            for item in search_results[:5]: # Берем топ-5 статей
+                title = item['title']
+                # Убираем HTML-подсветку из описания статьи
+                snippet = BeautifulSoup(item['snippet'], 'html.parser').get_text()
                 
-                if title_tag:
-                    title = title_tag.get_text(strip=True)
-                    link = title_tag.get('href', '')
-                    snippet = snippet_tag.get_text(strip=True) if snippet_tag else "Нет описания."
-                    
-                    clean_link = link.replace("https://", "").replace("http://", "")
-                    
-                    # Получаем крутую текстовую иконку для сайта
-                    icon = get_site_icon(clean_link)
-                    
-                    results.append(f"{icon} {title}")
-                    results.append(f"Описание: {snippet}")
-                    results.append(f"Адрес: {clean_link}")
-                    results.append("-" * 35)
-            
-            if len(results) <= 3:
-                for tag in soup(["script", "style", "noscript", "header", "footer"]):
-                    tag.extract()
-                return soup.get_text(separator='\n', strip=True), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+                results.append(f"📌 {title}")
+                results.append(f"{snippet}...")
+                results.append(f"Ссылка: ru.wikipedia.org/wiki/{title.replace(' ', '_')}")
+                results.append("-" * 30)
                 
             return "\n".join(results), 200, {'Content-Type': 'text/plain; charset=utf-8'}
             
         except Exception as e:
-            return f"Ошибка поиска Startpage: {str(e)}", 200
+            return f"Ошибка поиска: {str(e)}", 200
             
     else:
-        # Просмотр обычного сайта
+        # Если в запросе есть точка, открываем этот сайт напрямую
         clean_url = query_input.replace("https://", "").replace("http://", "")
         target_url = f"https://{clean_url}"
         
