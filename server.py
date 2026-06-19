@@ -6,7 +6,6 @@ app = Flask(__name__)
 
 SECRET_TOKEN = "HAsdkrlaaaiwejkdh12AUs"
 
-# Умный подбор текстовых иконок под разные сайты
 def get_site_icon(url):
     url = url.lower()
     if "youtube.com" in url or "youtu.be" in url:
@@ -19,8 +18,6 @@ def get_site_icon(url):
         return "💻 [GitHub]"
     elif "steam" in url or "play" in url or "game" in url:
         return "🎮 [Игры]"
-    elif "mail" in url or "yandex" in url:
-        return "📧 [Почта]"
     else:
         return "🌐 [Сайт]"
 
@@ -38,40 +35,42 @@ def browse():
     if not query_input:
         return "Введите поисковый запрос или URL...", 200
     
-    # ЕСЛИ ПОИСК (нет точки в запросе) — ищем через Startpage (Google)
+    # ЕСЛИ ПОИСК (нет точки в запросе) — ищем через DuckDuckGo HTML (без капчи)
     if '.' not in query_input:
         try:
-            search_url = "https://www.startpage.com/sp/search"
-            data = {
-                "query": query_input,
-                "cat": "web",
-                "cmd": "process_search",
-                "language": "nederlands",
-                "engine0": "v1u0sh"
-            }
+            # Облегченная версия DDG для старых браузеров и скриптов
+            search_url = f"https://html.duckduckgo.com/html/?q={query_input}"
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1',
-                'Content-Type': 'application/x-www-form-urlencoded'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
             
-            response = requests.post(search_url, data=data, headers=headers, timeout=10)
+            response = requests.get(search_url, headers=headers, timeout=10)
             soup = BeautifulSoup(response.text, 'html.parser')
             
             results = []
-            results.append(f" ۩  РЕЗУЛЬТАТЫ ПОИСКА: {query_input.upper()}  ۩ ")
+            results.append(f" ۩  РЕЗУЛЬТАТЫ ПОИСКА DDG: {query_input.upper()}  ۩ ")
             results.append("=" * 40)
             results.append("")
             
-            for result in soup.find_all('li', class_='w-gl__result'):
-                title_tag = result.find('a', class_='w-gl__result-title')
-                snippet_tag = result.find('p', class_='w-gl__description')
+            # Парсим результаты поиска
+            for result in soup.find_all('div', class_='result'):
+                title_tag = result.find('a', class_='result__url')
+                snippet_tag = result.find('a', class_='result__snippet')
                 
                 if title_tag:
                     title = title_tag.get_text(strip=True)
                     link = title_tag.get('href', '')
                     snippet = snippet_tag.get_text(strip=True) if snippet_tag else "Нет описания."
                     
-                    clean_link = link.replace("https://", "").replace("http://", "")
+                    # Извлекаем чистую ссылку из редиректа DDG, если нужно, или просто чистим протокол
+                    if "uddg=" in link:
+                        clean_link = link.split("uddg=")[1].split("&")[0]
+                        from urllib.parse import unquote
+                        clean_link = unquote(clean_link)
+                    else:
+                        clean_link = link
+                        
+                    clean_link = clean_link.replace("https://", "").replace("http://", "")
                     icon = get_site_icon(clean_link)
                     
                     results.append(f"{icon} {title}")
@@ -80,14 +79,12 @@ def browse():
                     results.append("-" * 35)
             
             if len(results) <= 3:
-                for tag in soup(["script", "style", "noscript", "header", "footer"]):
-                    tag.extract()
-                return soup.get_text(separator='\n', strip=True), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+                return f"По запросу '{query_input}' ничего не найдено или DDG временно недоступен.", 200
                 
             return "\n".join(results), 200, {'Content-Type': 'text/plain; charset=utf-8'}
             
         except Exception as e:
-            return f"Ошибка поиска Startpage: {str(e)}", 200
+            return f"Ошибка поиска DuckDuckGo: {str(e)}", 200
             
     # ЕСЛИ ССЫЛКА (есть точка) — открываем сайт напрямую
     else:
