@@ -1,6 +1,7 @@
 """
 Мини-браузер — серверная часть.
-Принимает GET /render?url=https://example.com
+Принимает GET /render/<url-без-протокола>
+   например: /render/example.com  или  /render/example.com/page
 Возвращает JSON-массив команд для Lua-клиента:
 
 [
@@ -170,9 +171,9 @@ def parse_to_commands(html, base_url):
     return commands
 
 
-@app.route("/render")
-def render():
-    url = request.args.get("url", "")
+@app.route("/render/<path:target_url>")
+def render(target_url):
+    url = target_url
     if not url:
         return jsonify({"error": "no url"}), 400
     if not url.startswith("http://") and not url.startswith("https://"):
