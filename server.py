@@ -7,15 +7,6 @@ app = Flask(__name__)
 
 SECRET_TOKEN = "HAsdkrlaaaiwejkdh12AUs"
 
-# Список стабильных публичных серверов SearXNG, которые не банят
-SEARXNG_INSTANCES = [
-    "https://search.onon.im",
-    "https://searx.be",
-    "https://searxng.site",
-    "https://searx.work",
-    "https://priv.au"
-]
-
 def get_site_icon(url):
     url = url.lower()
     if "youtube.com" in url or "youtu.be" in url:
@@ -60,51 +51,46 @@ def browse():
     if not query_input:
         return "Введите поисковый запрос или URL...", 200
     
-    # ЕСЛИ ПОИСК (нет точки в запросе) — ищем через SearXNG по всему инету
+    # ЕСЛИ ПОИСК (нет точки) — используем текстовый шлюз Lite Поиска (не банит Рендер)
     if '.' not in query_input:
-        response_json = None
-        # Пробуем разные сервера, если какой-то лежит
-        for instance in SEARXNG_INSTANCES:
-            try:
-                search_url = f"{instance}/search"
-                params = {
-                    "q": query_input,
-                    "format": "json",
-                    "pageno": 1,
-                    "safesearch": 1
-                }
-                headers = {'User-Agent': 'Mozilla/5.0 NavalBrowser/2.0'}
-                res = requests.get(search_url, params=params, headers=headers, timeout=5)
+        try:
+            # Используем поисковый прокси Mojeek, он вообще не блокирует хостинги
+            search_url = f"https://www.mojeek.com/search?q={query_input}"
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            
+            res = requests.get(search_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(res.text, 'html.parser')
+            
+            results = []
+            results.append(f" ۩  НАВАЛ ПОИСК (БЕЗ БАНОВ): {query_input.upper()}  ۩ ")
+            results.append("=" * 40)
+            results.append("")
+            
+            # Находим все ссылки на результаты
+            for link_tag in soup.find_all('a', class_='ob'):
+                title = link_tag.get_text(strip=True)
+                link = link_tag.get('href', '')
                 
-                if res.status_code == 200:
-                    response_json = res.json()
-                    break # Нашли рабочий сервер, выходим из цикла
-            except:
-                continue # Если сервер выдал ошибку, берем следующий
-        
-        if not response_json or not response_json.get('results'):
-            return f"Ошибка: Все поисковые узлы SearXNG временно перегружены. Попробуй позже.", 200
+                # Находим описание под ссылкой
+                snippet_tag = link_tag.find_next('p', class_='s')
+                snippet = snippet_tag.get_text(strip=True) if snippet_tag else "Нет описания."
+                
+                if title and link and not link.startswith('/'):
+                    clean_link = link.replace("https://", "").replace("http://", "")
+                    icon = get_site_icon(clean_link)
+                    
+                    results.append(f"{icon} {title}")
+                    results.append(f"Инфо: {snippet}")
+                    results.append(f"Ссылка: {clean_link}")
+                    results.append("-" * 35)
             
-        results = []
-        results.append(f" ۩  РЕЗУЛЬТАТЫ ПОИСКА SEARXNG: {query_input.upper()}  ۩ ")
-        results.append("=" * 40)
-        results.append("")
-        
-        # Парсим чистый JSON без всякого HTML-мусора
-        for item in response_json.get('results', [])[:6]: # Топ-6 сайтов
-            title = item.get('title', 'Без названия')
-            link = item.get('url', '')
-            snippet = item.get('content', 'Нет описания.')
+            if len(results) <= 3:
+                return f"Ничего не найдено по запросу '{query_input}'. Перепроверь ввод.", 200
+                
+            return "\n".join(results), 200, {'Content-Type': 'text/plain; charset=utf-8'}
             
-            clean_link = link.replace("https://", "").replace("http://", "")
-            icon = get_site_icon(clean_link)
-            
-            results.append(f"{icon} {title}")
-            results.append(f"Инфо: {snippet}")
-            results.append(f"Ссылка: {clean_link}")
-            results.append("-" * 35)
-            
-        return "\n".join(results), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+        except Exception as e:
+            return f"Ошибка поискового узла: {str(e)}", 200
             
     # ЕСЛИ ССЫЛКА (есть точка) — открываем сайт напрямую
     else:
