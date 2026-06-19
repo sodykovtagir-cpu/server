@@ -1,6 +1,8 @@
-from flask import Flask, request
+from flask import Flask, request, send_file
 import requests
 from bs4 import BeautifulSoup
+import io
+from urllib.parse import unquote
 
 app = Flask(__name__)
 
@@ -25,6 +27,21 @@ def get_site_icon(url):
 def home():
     return "WAP-сервер активен!", 200
 
+@app.route('/get_image')
+def get_image():
+    img_url = request.args.get('url')
+    if not img_url:
+        return "No URL provided", 400
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        img_res = requests.get(img_url, headers=headers, timeout=5)
+        if img_res.status_code == 200:
+            img_io = io.BytesIO(img_res.content)
+            return send_file(img_io, mimetype=img_res.headers.get('Content-Type', 'image/png'))
+    except Exception as e:
+        return f"Error loading image: {str(e)}", 500
+    return "Failed to load image", 404
+
 @app.route('/browse')
 def browse():
     user_token = request.headers.get('X-Auth-Token')
@@ -35,51 +52,66 @@ def browse():
     if not query_input:
         return "Введите поисковый запрос или URL...", 200
     
-    # ЕСЛИ ПОИСК (нет точки в запросе) — ищем через DuckDuckGo HTML (без капчи)
+    # ЕСЛИ ПОИСК (нет точки в запросе)
     if '.' not in query_input:
         try:
-            # Облегченная версия DDG для старых браузеров и скриптов
+            # Используем самый стабильный html-поисковик DDG
             search_url = f"https://html.duckduckgo.com/html/?q={query_input}"
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0'
             }
             
             response = requests.get(search_url, headers=headers, timeout=10)
             soup = BeautifulSoup(response.text, 'html.parser')
             
             results = []
-            results.append(f" ۩  РЕЗУЛЬТАТЫ ПОИСКА DDG: {query_input.upper()}  ۩ ")
+            results.append(f" ۩  РЕЗУЛЬТАТЫ ПОИСКА: {query_input.upper()}  ۩ ")
             results.append("=" * 40)
             results.append("")
             
-            # Парсим результаты поиска
-            for result in soup.find_all('div', class_='result'):
-                title_tag = result.find('a', class_='result__url')
-                snippet_tag = result.find('a', class_='result__snippet')
-                
-                if title_tag:
-                    title = title_tag.get_text(strip=True)
-                    link = title_tag.get('href', '')
-                    snippet = snippet_tag.get_text(strip=True) if snippet_tag else "Нет описания."
-                    
-                    # Извлекаем чистую ссылку из редиректа DDG, если нужно, или просто чистим протокол
-                    if "uddg=" in link:
-                        clean_link = link.split("uddg=")[1].split("&")[0]
-                        from urllib.parse import unquote
-                        clean_link = unquote(clean_link)
-                    else:
-                        clean_link = link
-                        
-                    clean_link = clean_link.replace("https://", "").replace("http://", "")
-                    icon = get_site_icon(clean_link)
-                    
-                    results.append(f"{icon} {title}")
-                    results.append(f"Описание: {snippet}")
-                    results.append(f"Ссылка: {clean_link}")
-                    results.append("-" * 35)
+            # Находим все блоки с результатами на странице
+            search_elements = soup.find_all('a', class_='result__url')
             
+            for tag in search_elements:
+                title_elem = tag.find_next('a', class_='result__snippet')
+                
+                title = tag.get_text(strip=True)
+                link = tag.get('href', '')
+                snippet = title_elem.get_text(strip=True) if title_elem else "Нет описания."
+                
+                # Чистим ссылки DDG от редиректов
+                if "uddg=" in link:
+                    clean_link = link.split("uddg=")[1].split("&")[0]
+                    clean_link = unquote(clean_link)
+                else:
+                    clean_link = link
+                    
+                clean_link = clean_link.replace("https://", "").replace("http://", "")
+                icon = get_site_icon(clean_link)
+                
+                results.append(f"{icon} {title}")
+                results.append(f"Описание: {snippet}")
+                results.append(f"Ссылка: {clean_link}")
+                results.append("-" * 35)
+            
+            # Если DDG выдал другую структуру, ищем по обычным ссылкам результатов
             if len(results) <= 3:
-                return f"По запросу '{query_input}' ничего не найдено или DDG временно недоступен.", 200
+                for res_td in soup.find_all('td', class_='result-links--main'):
+                    a_tag = res_td.find('a')
+                    if a_tag:
+                        title = a_tag.get_text(strip=True)
+                        link = a_tag.get('href', '')
+                        if "uddg=" in link:
+                            link = unquote(link.split("uddg=")[1].split("&")[0])
+                        link = link.replace("https://", "").replace("http://", "")
+                        icon = get_site_icon(link)
+                        
+                        results.append(f"{icon} {title}")
+                        results.append(f"Ссылка: {link}")
+                        results.append("-" * 35)
+
+            if len(results) <= 3:
+                return f"По запросу '{query_input}' ничего не найдено через DDG.", 200
                 
             return "\n".join(results), 200, {'Content-Type': 'text/plain; charset=utf-8'}
             
