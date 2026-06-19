@@ -20,59 +20,56 @@ def browse():
     if not query_input:
         return "Введите поисковый запрос или URL...", 200
     
-    # Если в запросе нет точки — ищем через безотказный DuckDuckGo HTML
+    # Если в запросе нет точки — ищем по базе знаний Википедии через официальный API
     if '.' not in query_input:
-        target_url = f"https://html.duckduckgo.com/html/?q={query_input.replace(' ', '+')}"
-    else:
-        clean_url = query_input.replace("https://", "").replace("http://", "")
-        target_url = f"https://{clean_url}"
-        
-    try:
-        # Стандартный чистый заголовок браузера
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        response = requests.get(target_url, headers=headers, timeout=10)
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Вырезаем весь лишний мусор и скрипты
-        for tag in soup(["script", "style", "header", "footer", "nav", "aside", "noscript"]):
-            tag.extract()
+        try:
+            # Запрос к API Википедии для поиска статей
+            wiki_api = f"https://ru.wikipedia.org/w/api.php?action=query&list=search&srsearch={query_input}&format=json"
+            headers = {'User-Agent': 'NavalBrowser/1.0'}
+            req = requests.get(wiki_api, headers=headers, timeout=10).json()
             
-        # Если искали через DuckDuckGo, сделаем выдачу красивой и читаемой списком
-        if "duckduckgo.com" in target_url:
+            search_results = req.get('query', {}).get('search', [])
+            
+            if not search_results:
+                return f"По запросу '{query_input}' ничего не найдено.", 200
+                
             results = []
-            results.append("=== РЕЗУЛЬТАТЫ ПОИСКА ===")
+            results.append(f"=== Результаты поиска для: {query_input} ===")
             results.append("")
             
-            # Находим блоки с результатами поиска в HTML-версии DuckDuckGo
-            for links in soup.find_all('a', class_='result__url'):
-                title_block = links.find_previous('a', class_='result__snippet')
-                title = links.get_text(strip=True)
-                url_text = links.get('href', '')
+            for item in search_results[:5]: # Берем первые 5 совпадений
+                title = item['title']
+                # Очищаем текст от HTML-тегов вроде <span>
+                snippet = BeautifulSoup(item['snippet'], 'html.parser').get_text()
                 
-                # Зачищаем внутренние ссылки DuckDuckGo, оставляя чистый сайт
-                if "uddg=" in url_text:
-                    url_text = url_text.split("uddg=")[1].split("&")[0]
-                    from urllib.parse import unquote
-                    url_text = unquote(url_text)
-                
-                if title and url_text:
-                    results.append(f"• Ссылка: {url_text}")
-                    results.append("")
-            
-            # Если вдруг ничего не нашлось стандартным парсером, отдаем просто текст
-            if len(results) <= 3:
-                clean_text = soup.get_text(separator='\n', strip=True)
-                return clean_text, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+                results.append(f"📌 {title}")
+                results.append(f"{snippet}...")
+                results.append(f"Ссылка: ru.wikipedia.org/wiki/{title.replace(' ', '_')}")
+                results.append("-" * 30)
                 
             return "\n".join(results), 200, {'Content-Type': 'text/plain; charset=utf-8'}
             
-        # Для обычных сайтов возвращаем стандартный текст
-        clean_text = soup.get_text(separator='\n', strip=True)
-        return clean_text, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+        except Exception as e:
+            return f"Ошибка поиска: {str(e)}", 200
+            
+    else:
+        # Если это обычная ссылка, открываем как сайт
+        clean_url = query_input.replace("https://", "").replace("http://", "")
+        target_url = f"https://{clean_url}"
         
-    except Exception as e:
-        return f"Ошибка шлюза: {str(e)}", 200
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            response = requests.get(target_url, headers=headers, timeout=10)
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for tag in soup(["script", "style", "header", "footer", "nav", "aside", "noscript"]):
+                tag.extract()
+                
+            clean_text = soup.get_text(separator='\n', strip=True)
+            return clean_text, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+            
+        except Exception as e:
+            return f"Ошибка шлюза: {str(e)}", 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
